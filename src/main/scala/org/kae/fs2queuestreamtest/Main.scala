@@ -23,16 +23,16 @@ object Main extends IOApp {
       _ <- IO.sleep(5.minutes)
       checkTime <- now
       isBroken <- tc.isBroken
-      _ <- if (isBroken)
-        IO.unit
-      else for {
-        state <- tc.showState
-        _ <- IO(println(s"Okay at $checkTime"))
-        _ <- IO(println(state))
-        _ <- check(tc)
-      } yield ()
+      _ <-
+        if (isBroken)
+          IO(println("Broken at $checkTime")) *> printState(tc)
+        else
+          IO(println(s"Okay at $checkTime")) *> printState(tc) *> check(tc)
     } yield ()
   }
+
+  private def printState(tc: TestCase) =
+    tc.showState >>= (text => IO(println(text)))
 
   private val now = IO(Instant.now)
 }
