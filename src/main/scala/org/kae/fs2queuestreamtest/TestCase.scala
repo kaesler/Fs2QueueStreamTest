@@ -38,7 +38,7 @@ class TestCase (
 
   private val freshElt: IO[QueueElement] = IO(QueueElement(Random.nextString(24)))
 
-  private val maximumTolerableQueueDelay = JDuration.ofMinutes(5)
+  private val maximumTolerableQueueDelay = JDuration.ofSeconds(30)
 
   def lastArrivalTime: IO[Option[Instant]] = lastArrivalTimeRef.get
   def lastPullTime: IO[Option[Instant]] = lastPullTimeRef.get
@@ -54,19 +54,23 @@ class TestCase (
       s"last pull:    ${optPullTime.map(_.toString).getOrElse("None")}\n" ++
       s"pull size:    ${optPullSize.map(_.toString).getOrElse("None")}\n"
 
-  def start: IO[Unit] =
+  def start: IO[(Fiber[IO, Unit], Fiber[IO, Unit])] =
     for {
       queue <- Queue.unbounded[IO, QueueElement]
-      _ <- startConsumer(queue)
-      _ <- startProducer(queue)
-    } yield ()
+      consumerFiber <- startConsumer(queue)
+      producerFiber <- startProducer(queue)
+    } yield (producerFiber, consumerFiber)
 
   def isBroken: IO[Boolean] =
     (for {
       lastArrival <- OptionT(lastArrivalTimeRef.get)
       lastPull <- OptionT(lastPullTimeRef.get)
-      delay = JDuration.between(lastArrival, lastPull)
-    } yield delay.toNanos > maximumTolerableQueueDelay.toNanos)
+      thePresent <- OptionT.liftF(now)
+      delay = JDuration.between(lastPull, thePresent)
+    } yield
+      delay.toNanos > maximumTolerableQueueDelay.toNanos &&
+        lastArrival.isAfter(lastPull)
+      )
       .value
       .map(_.getOrElse(false))
 
